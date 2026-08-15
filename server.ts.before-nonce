@@ -1,0 +1,978 @@
+import express from "express";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
+import dotenv from "dotenv";
+import { pool } from "./src/db/database";
+
+dotenv.config();
+
+const app = express();
+const PORT = 5000;
+
+app.use(express.json({ limit: "50mb" }));
+
+// ============================================================
+// GEMINI CLIENT
+// ============================================================
+
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+    return null;
+  }
+
+  return new GoogleGenAI({ apiKey });
+}
+
+// ============================================================
+// DATABASE TEST
+// ============================================================
+
+app.get("/api/db-test", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT NOW() AS current_time"
+    );
+
+    res.json({
+      connected: true,
+      database: "tfrenzy_modelguard",
+      time: result.rows[0].current_time,
+    });
+  } catch (error: any) {
+    console.error("Database test failed:", error);
+
+    res.status(500).json({
+      connected: false,
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================
+// DEVICES
+// ============================================================
+
+app.get("/api/devices", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        name,
+        serial_number,
+        mac_address,
+        ip_address,
+        status,
+        registered_at,
+        last_seen_at,
+        location
+      FROM devices
+      ORDER BY registered_at DESC
+    `);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      devices: result.rows,
+    });
+  } catch (error: any) {
+    console.error("Failed to fetch devices:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/devices", async (req, res) => {
+  try {
+    const {
+      id,
+      name,
+      serialNumber,
+      macAddress,
+      ipAddress,
+      deviceCertFingerprint,
+      certIssuer,
+      certExpiresAt,
+      publicKey,
+      hardwareFuseHash,
+      jetpackVersion,
+      cudaVersion,
+      status,
+      location,
+      assignedModelIds,
+    } = req.body;
+
+    if (
+      !id ||
+      !name ||
+      !serialNumber ||
+      !macAddress ||
+      !ipAddress ||
+      !deviceCertFingerprint ||
+      !certIssuer ||
+      !certExpiresAt ||
+      !publicKey ||
+      !hardwareFuseHash ||
+      !jetpackVersion ||
+      !cudaVersion ||
+      !location
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required device fields",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO devices (
+        id,
+        name,
+        serial_number,
+        mac_address,
+        ip_address,
+        device_cert_fingerprint,
+        cert_issuer,
+        cert_expires_at,
+        public_key,
+        hardware_fuse_hash,
+        jetpack_version,
+        cuda_version,
+        status,
+        location,
+        assigned_model_ids
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15
+      )
+      RETURNING *
+      `,
+      [
+        id,
+        name,
+        serialNumber,
+        macAddress,
+        ipAddress,
+        deviceCertFingerprint,
+        certIssuer,
+        certExpiresAt,
+        publicKey,
+        hardwareFuseHash,
+        jetpackVersion,
+        cudaVersion,
+        status || "pending",
+        location,
+        assignedModelIds || [],
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      device: result.rows[0],
+    });
+  } catch (error: any) {
+    console.error("Failed to create device:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================
+// MODELS
+// ============================================================
+
+app.get("/api/models", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        name,
+        version,
+        original_file_name,
+        original_size_bytes,
+        encrypted_size_bytes,
+        trt_version,
+        architecture,
+        package_hash,
+        signature,
+        signing_key_id,
+        encryption_algo,
+        signature_algo,
+        created_at,
+        created_by,
+        status,
+        input_shape,
+        precision,
+        revoked_at,
+        revocation_reason
+      FROM models
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      models: result.rows,
+    });
+  } catch (error: any) {
+    console.error("Models fetch failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/models", async (req, res) => {
+  try {
+    const {
+      id,
+      name,
+      version,
+      originalFileName,
+      originalSizeBytes,
+      encryptedSizeBytes,
+      trtVersion,
+      architecture,
+      packageHash,
+      signature,
+      signingKeyId,
+      encryptionAlgo,
+      signatureAlgo,
+      createdBy,
+      inputShape,
+      precision,
+    } = req.body;
+
+    const result = await pool.query(
+      `
+      INSERT INTO models (
+        id,
+        name,
+        version,
+        original_file_name,
+        original_size_bytes,
+        encrypted_size_bytes,
+        trt_version,
+        architecture,
+        package_hash,
+        signature,
+        signing_key_id,
+        encryption_algo,
+        signature_algo,
+        created_by,
+        input_shape,
+        precision
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+        $11,$12,$13,$14,$15,$16
+      )
+      RETURNING *
+      `,
+      [
+        id,
+        name,
+        version,
+        originalFileName,
+        originalSizeBytes,
+        encryptedSizeBytes,
+        trtVersion,
+        architecture,
+        packageHash,
+        signature,
+        signingKeyId,
+        encryptionAlgo || "AES-256-GCM",
+        signatureAlgo || "RSA-3072-PSS",
+        createdBy,
+        inputShape,
+        precision,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      model: result.rows[0],
+    });
+  } catch (error: any) {
+    console.error("Model insert failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================
+// MODEL VERSIONS
+// ============================================================
+
+app.get("/api/model-versions", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        model_id,
+        version,
+        package_hash,
+        created_at,
+        status
+      FROM model_versions
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      versions: result.rows,
+    });
+  } catch (error: any) {
+    console.error("Model versions fetch failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/model-versions", async (req, res) => {
+  try {
+    const {
+      id,
+      modelId,
+      version,
+      packageHash,
+      status,
+    } = req.body;
+
+    if (!id || !modelId || !version || !packageHash) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required model version fields",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO model_versions (
+        id,
+        model_id,
+        version,
+        package_hash,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+      `,
+      [
+        id,
+        modelId,
+        version,
+        packageHash,
+        status || "active",
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      version: result.rows[0],
+    });
+  } catch (error: any) {
+    console.error("Model version insert failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================
+// MODEL PACKAGES
+// ============================================================
+
+app.get("/api/model-packages", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        version_id,
+        encrypted_payload_hex,
+        manifest_json,
+        manifest_sig_hex,
+        status,
+        created_at
+      FROM model_packages
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      packages: result.rows,
+    });
+  } catch (error: any) {
+    console.error("Model packages fetch failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/model-packages", async (req, res) => {
+  try {
+    const {
+      id,
+      versionId,
+      encryptedPayloadHex,
+      manifestJson,
+      manifestSigHex,
+      status,
+    } = req.body;
+
+    if (
+      !id ||
+      !versionId ||
+      !encryptedPayloadHex ||
+      !manifestJson ||
+      !manifestSigHex
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required model package fields",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO model_packages (
+        id,
+        version_id,
+        encrypted_payload_hex,
+        manifest_json,
+        manifest_sig_hex,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+      `,
+      [
+        id,
+        versionId,
+        encryptedPayloadHex,
+        typeof manifestJson === "string"
+          ? manifestJson
+          : JSON.stringify(manifestJson),
+        manifestSigHex,
+        status || "active",
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      package: result.rows[0],
+    });
+  } catch (error: any) {
+    console.error("Model package insert failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================
+// DEPLOYMENTS
+// IMPORTANT: Uses the ACTUAL deployments table structure
+// ============================================================
+
+app.get("/api/deployments", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        model_id,
+        device_id,
+        model_name,
+        model_version,
+        device_name,
+        device_serial,
+        created_at,
+        expires_at,
+        status,
+        max_offline_days,
+        nonce_interval_seconds,
+        license_key,
+        active_nonces_used,
+        revoked_at,
+        revoked_reason
+      FROM deployments
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      deployments: result.rows,
+    });
+  } catch (error: any) {
+    console.error("Deployments fetch failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/deployments", async (req, res) => {
+  try {
+    const {
+      id,
+      modelId,
+      deviceId,
+      modelName,
+      modelVersion,
+      deviceName,
+      deviceSerial,
+      expiresAt,
+      status,
+      maxOfflineDays,
+      nonceIntervalSeconds,
+      licenseKey,
+    } = req.body;
+
+    if (
+      !id ||
+      !modelId ||
+      !deviceId ||
+      !modelName ||
+      !modelVersion ||
+      !deviceName ||
+      !deviceSerial ||
+      !expiresAt ||
+      !licenseKey
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required deployment fields",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO deployments (
+        id,
+        model_id,
+        device_id,
+        model_name,
+        model_version,
+        device_name,
+        device_serial,
+        expires_at,
+        status,
+        max_offline_days,
+        nonce_interval_seconds,
+        license_key
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+      )
+      RETURNING *
+      `,
+      [
+        id,
+        modelId,
+        deviceId,
+        modelName,
+        modelVersion,
+        deviceName,
+        deviceSerial,
+        expiresAt,
+        status || "active",
+        maxOfflineDays ?? 7,
+        nonceIntervalSeconds ?? 30,
+        licenseKey,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      deployment: result.rows[0],
+    });
+  } catch (error: any) {
+    console.error("Deployment insert failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================
+// HEALTH
+// ============================================================
+app.get("/api/security/validate/:deploymentId", async (req, res) => {
+  try {
+    const { deploymentId } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT
+        d.id AS deployment_id,
+        d.status AS deployment_status,
+        d.expires_at,
+
+        d.device_id,
+        dv.name AS device_name,
+        dv.status AS device_status,
+
+        d.model_id,
+        m.name AS model_name,
+        m.status AS model_status,
+
+        al.id AS licence_id,
+        al.status AS licence_status,
+        al.expiry_time AS licence_expiry,
+        al.nonce
+
+      FROM deployments d
+
+      JOIN devices dv
+        ON dv.id = d.device_id
+
+      JOIN models m
+        ON m.id = d.model_id
+
+      LEFT JOIN activation_licences al
+        ON al.deployment_id = d.id
+        AND al.status = 'active'
+
+      WHERE d.id = $1
+
+      ORDER BY al.created_at DESC
+      LIMIT 1
+      `,
+      [deploymentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        authorized: false,
+        error: "Deployment not found"
+      });
+    }
+
+    const row = result.rows[0];
+    const now = new Date();
+
+    const deploymentValid =
+      row.deployment_status === "active" &&
+      new Date(row.expires_at) > now;
+
+    const deviceValid =
+      row.device_status === "approved";
+
+    const modelValid =
+      row.model_status === "active";
+
+    const licenceValid =
+      row.licence_status === "active" &&
+      row.licence_expiry &&
+      new Date(row.licence_expiry) > now;
+
+    const authorized =
+      deploymentValid &&
+      deviceValid &&
+      modelValid &&
+      licenceValid;
+
+    res.json({
+      success: true,
+      authorized,
+
+      checks: {
+        deployment: deploymentValid,
+        device: deviceValid,
+        model: modelValid,
+        activationLicence: licenceValid
+      },
+
+      deployment: {
+        id: row.deployment_id,
+        status: row.deployment_status,
+        expiresAt: row.expires_at
+      },
+
+      device: {
+        id: row.device_id,
+        name: row.device_name,
+        status: row.device_status
+      },
+
+      model: {
+        id: row.model_id,
+        name: row.model_name,
+        status: row.model_status
+      },
+
+      licence: {
+        id: row.licence_id,
+        status: row.licence_status,
+        expiry: row.licence_expiry,
+        nonce: row.nonce
+      }
+    });
+
+  } catch (error: any) {
+    console.error("Security validation failed:", error);
+
+    res.status(500).json({
+      success: false,
+      authorized: false,
+      error: error.message
+    });
+  }
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "TFrenzy ModelGuard API",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ============================================================
+// GEMINI SECURITY AUDIT
+// ============================================================
+
+app.post("/api/security-audit", async (req, res) => {
+  try {
+    const ai = getGeminiClient();
+
+    if (!ai) {
+      return res.json({
+        success: false,
+        analysis:
+          "Gemini API key is not configured. Using fallback local security analyzer.",
+        recommendations: [
+          "Ensure device certificate renewal interval is strictly less than 30 days.",
+          "Verify that nonces are strictly single-use to prevent replay attacks.",
+          "Confirm zeroing of CUDA pinned memory after TensorRT engine deserialization.",
+        ],
+      });
+    }
+
+    const { logs, systemState } = req.body;
+
+    const prompt = `
+You are a Senior AI Security Architect specializing in:
+- TensorRT model protection
+- Jetson Orin Nano security
+- mTLS device authorization
+- encrypted AI model deployment
+
+Analyze the following ModelGuard audit information.
+
+Logs:
+${JSON.stringify(logs || []).slice(0, 3000)}
+
+System State:
+${JSON.stringify(systemState || {}).slice(0, 1000)}
+
+Provide:
+
+1. Overall Risk Score from 0 to 100
+2. Threat Analysis
+3. Detected Anomalies
+4. Actionable Security Recommendations
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+
+    res.json({
+      success: true,
+      analysis: response.text,
+    });
+  } catch (error: any) {
+    console.error("Gemini Security Audit Error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to analyze security state",
+    });
+  }
+});
+
+// ============================================================
+// SERVER START
+// ============================================================
+// Activation Licence APIs
+app.get("/api/activation-licences", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        deployment_id,
+        device_id,
+        model_id,
+        package_hash,
+        issue_time,
+        expiry_time,
+        nonce,
+        signature_hex,
+        status,
+        created_at
+      FROM activation_licences
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      licences: result.rows
+    });
+  } catch (error: any) {
+    console.error("Activation licences fetch failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post("/api/activation-licences", async (req, res) => {
+  try {
+    const {
+      id,
+      deploymentId,
+      deviceId,
+      modelId,
+      packageHash,
+      expiryTime,
+      nonce,
+      signatureHex,
+      status
+    } = req.body;
+
+    if (
+      !id ||
+      !deploymentId ||
+      !deviceId ||
+      !modelId ||
+      !packageHash ||
+      !expiryTime ||
+      !nonce ||
+      !signatureHex
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required activation licence fields"
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO activation_licences (
+        id,
+        deployment_id,
+        device_id,
+        model_id,
+        package_hash,
+        expiry_time,
+        nonce,
+        signature_hex,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+      `,
+      [
+        id,
+        deploymentId,
+        deviceId,
+        modelId,
+        packageHash,
+        expiryTime,
+        nonce,
+        signatureHex,
+        status || "active"
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      licence: result.rows[0]
+    });
+  } catch (error: any) {
+    console.error("Activation licence insert failed:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+
+async function startServer() {
+  try {
+    // Test PostgreSQL connection before starting server
+    await pool.query("SELECT 1");
+
+    console.log("✅ PostgreSQL connected successfully");
+
+    if (process.env.NODE_ENV !== "production") {
+      const vite = await createViteServer({
+        server: {
+          middlewareMode: true,
+        },
+        appType: "spa",
+      });
+
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+
+      app.use(express.static(distPath));
+
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(
+        `TFrenzy ModelGuard server running at http://0.0.0.0:${PORT}`
+      );
+    });
+  } catch (error: any) {
+    console.error("❌ Failed to start server:", error);
+    process.exit(1);
+  }
+}
+
+startServer();

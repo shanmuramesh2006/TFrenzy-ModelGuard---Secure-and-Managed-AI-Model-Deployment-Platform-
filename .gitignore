@@ -1,0 +1,17 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.git/
+*.log
+dist/
+build/
+__pycache__/
+*.pyc
+
+keys/
+*.engine
+
+jetson-agent/certs/
+
+jetson-agent/certs/

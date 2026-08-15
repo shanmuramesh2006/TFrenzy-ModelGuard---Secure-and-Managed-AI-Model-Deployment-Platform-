@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #07090E;
+    --bg-card: #0F1423;
+    --bg-[#0F1423]: #0F1423;
+    --border-color: #1E2638;
+    --accent-cyan: #00F0FF;
+    --accent-blue: #2563EB;
+  }
+
+  body {
+    background-color: #07090E;
+    color: #9CA3AF;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Glassmorphism & Custom Accents */
+.glass-panel {
+  background: rgba(15, 20, 35, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(30, 38, 56, 0.8);
+}
+
+.glass-card {
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.9) 0%, rgba(15, 20, 35, 0.95) 100%);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(30, 38, 56, 0.9);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.15);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(37, 99, 235, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #07090E;
+}
+::-webkit-scrollbar-thumb {
+  background: #1E2638;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2D3A54;
+}
+
+/* Pulse Glow Animation */
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+

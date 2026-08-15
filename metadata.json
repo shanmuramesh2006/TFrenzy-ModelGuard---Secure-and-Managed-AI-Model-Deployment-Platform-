@@ -1,0 +1,6 @@
+{
+  "name": "TFrenzy ModelGuard",
+  "description": "Secure and Managed AI Model Deployment Platform for TensorRT models on Jetson Orin Nano devices with AES-256-GCM encryption, mTLS device authentication, in-memory execution, and attack testing suite.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

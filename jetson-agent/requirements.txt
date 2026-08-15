@@ -1,0 +1,19 @@
+# TFrenzy Jetson Agent Dependencies
+# Python 3.8+ required
+
+# Async HTTP client for backend communication
+aiohttp==3.9.1
+
+# Cryptography for encryption/decryption
+cryptography==41.0.7
+
+# For device hardware detection
+psutil==5.9.6
+
+# Optional: For production Jetson CUDA support
+# tensorrt>=8.5.0
+# pycuda>=2021.1
+# cupy-cuda11x>=11.0.0
+
+# Optional: For SSL/TLS certificate handling
+pyopenssl==23.3.0
