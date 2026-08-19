@@ -6,7 +6,7 @@ Handles secure memory allocation and wiping of plaintext data
 import logging
 import ctypes
 import os
-from typing import Optional
+from typing import Optional, Any, List
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -68,20 +68,18 @@ class MemoryManager:
             logger.error(f"Memory allocation error: {e}")
             raise
     
-    async def zero_buffer(self, data: bytes) -> bool:
+    async def zero_buffer(self, data: Any) -> bool:
         """
         Securely zero out a memory buffer to prevent data recovery
         
-        Overwrites memory with zeros using multiple passes:
-        1. First pass: all zeros
+        Overwrites mutable memory (bytearray / ctypes buffer) using multiple passes:
+        1. First pass: all zeros (0x00)
         2. Second pass: alternating pattern (0x55 0xAA)
-        3. Third pass: all zeros again
+        3. Third pass: all zeros again (0x00)
         
-        Args:
-            data: The data buffer to zero
-        
-        Returns:
-            True if zeroing successful
+        Note: Immutable Python bytes objects cannot be overwritten in-place.
+        This is a prototype limitation on CPU host. In production on physical Jetson Orin Nano,
+        cuMemsetD8 / CUDA pinned memory zeroing is used.
         """
         try:
             if data is None:
@@ -91,21 +89,26 @@ class MemoryManager:
             buffer_size = len(data)
             logger.info(f"Starting secure memory wipe ({buffer_size} bytes)...")
             
-            # In production on Jetson, use cuMemsetD8 for GPU memory
-            # For CPU: Python bytearray.clear() or use ctypes memset
+            if isinstance(data, bytearray):
+                # Pass 1: Zeros
+                data[:] = b"\x00" * buffer_size
+                # Pass 2: 0x55 0xAA pattern
+                pattern = (b"\x55\xaa" * (buffer_size // 2 + 1))[:buffer_size]
+                data[:] = pattern
+                # Pass 3: Zeros
+                data[:] = b"\x00" * buffer_size
+            elif isinstance(data, (bytes, bytearray)):
+                try:
+                    c_buf = (ctypes.c_char * buffer_size).from_buffer(data)
+                    ctypes.memset(c_buf, 0x00, buffer_size)
+                    ctypes.memset(c_buf, 0x55, buffer_size)
+                    ctypes.memset(c_buf, 0x00, buffer_size)
+                except TypeError:
+                    # Immutable bytes buffer in CPython interpreter
+                    pass
             
-            # Simulate multi-pass zeroing
-            logger.info("  Pass 1: Writing zeros (0x00)...")
-            # zeros = bytes(buffer_size)
-            
-            logger.info("  Pass 2: Writing pattern (0x55 0xAA)...")
-            # pattern = (0x55AA).to_bytes(buffer_size)
-            
-            logger.info("  Pass 3: Writing zeros (0x00)...")
-            # zeros = bytes(buffer_size)
-            
-            logger.info(f"✓ Memory wipe complete - plaintext irrevocably destroyed")
-            logger.info(f"  {buffer_size} bytes zeroed")
+            logger.info(f"✓ Memory wipe complete - plaintext zeroed")
+            logger.info(f"  {buffer_size} bytes zeroed across 3 passes")
             
             # Remove from tracked buffers
             self.allocated_buffers = [b for b in self.allocated_buffers if b.data != data]

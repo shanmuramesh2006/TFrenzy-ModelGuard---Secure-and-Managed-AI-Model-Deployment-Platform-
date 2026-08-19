@@ -6,7 +6,7 @@ Prevents replay attacks on authentication and key release
 import logging
 import os
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Set
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class NonceManager:
             random_part = os.urandom(16).hex()
             
             # Get current timestamp in milliseconds
-            timestamp = str(int(datetime.utcnow().timestamp() * 1000))
+            timestamp = str(int(datetime.now(timezone.utc).timestamp() * 1000))
             
             nonce = f"TF-NONCE-{random_part[:16]}-{timestamp}"
             

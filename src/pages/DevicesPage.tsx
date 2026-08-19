@@ -128,7 +128,7 @@ export const DevicesPage: React.FC = () => {
                       <span className="text-white font-medium">{device.jetpackVersion}</span>
                     </div>
                     <div>
-                      <span className="block text-[10px] uppercase font-bold text-[#6B7280]">Fuse Hash</span>
+                      <span className="block text-[10px] uppercase font-bold text-[#6B7280]">HW ID Hash</span>
                       <span className="text-[#00F0FF] font-semibold truncate block">{device.hardwareFuseHash}</span>
                     </div>
                     <div>
@@ -299,7 +299,7 @@ export const DevicesPage: React.FC = () => {
                 <p><strong className="text-[#00F0FF]">Subject:</strong> CN={selectedCertDevice.id}, O=TFrenzy Device Fleet, MAC={selectedCertDevice.macAddress}</p>
                 <p><strong className="text-[#00F0FF]">Issuer:</strong> {selectedCertDevice.certIssuer}</p>
                 <p><strong className="text-[#00F0FF]">SHA-256 Fingerprint:</strong> <span className="text-emerald-400 font-bold">{selectedCertDevice.deviceCertFingerprint}</span></p>
-                <p><strong className="text-[#00F0FF]">Hardware Fuse Root:</strong> {selectedCertDevice.hardwareFuseHash}</p>
+                <p><strong className="text-[#00F0FF]">Hardware Identity (Prototype):</strong> {selectedCertDevice.hardwareFuseHash}</p>
                 <p><strong className="text-[#00F0FF]">Valid Until:</strong> {new Date(selectedCertDevice.certExpiresAt).toUTCString()}</p>
               </div>
 

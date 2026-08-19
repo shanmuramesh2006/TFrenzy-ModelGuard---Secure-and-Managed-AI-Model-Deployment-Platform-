@@ -126,8 +126,8 @@ export const ArchitecturePage: React.FC = () => {
               <span className="text-indigo-400 font-extrabold">x509 Mutual TLS</span>
             </div>
             <div className="flex justify-between items-center bg-[#07090E] p-3 rounded-xl border border-[#1E2638]">
-              <span className="text-[#6B7280]">Hardware Root of Trust</span>
-              <span className="text-amber-400 font-extrabold">Jetson Fuse Key Hash</span>
+              <span className="text-[#6B7280]">Hardware Identity</span>
+              <span className="text-amber-400 font-extrabold">Hardware Identity Hash (Prototype)</span>
             </div>
           </div>
         </div>
