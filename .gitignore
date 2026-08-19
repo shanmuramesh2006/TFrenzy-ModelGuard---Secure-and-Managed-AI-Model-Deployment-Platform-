@@ -15,3 +15,5 @@ keys/
 jetson-agent/certs/
 
 jetson-agent/certs/
+
+tfrenzy-schema.sql
