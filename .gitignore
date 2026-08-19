@@ -9,7 +9,7 @@ build/
 __pycache__/
 *.pyc
 
-keys/
+# keys/
 *.engine
 
 jetson-agent/certs/
